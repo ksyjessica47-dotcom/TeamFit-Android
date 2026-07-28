@@ -232,6 +232,15 @@ private fun ModeCard(icon: String, title: String, body: String, onClick: () -> U
 
 @Composable
 private fun TeamFitTopBar(state: TeamFitUiState, showBack: Boolean, onBack: () -> Unit, onHome: () -> Unit, onSwitchMode: () -> Unit, onMyPage: () -> Unit, onNotifications: () -> Unit, onAdmin: () -> Unit, onLogout: () -> Unit) {
+    val currentCandidateId = state.candidates.find { it.email == state.account?.email }?.id
+    val unreadMessages = state.messages.count {
+        !state.readMessageIds.contains(it.id) &&
+            ((state.mode == ActivityMode.LEADER && it.senderMode == ActivityMode.MEMBER) ||
+                (state.mode == ActivityMode.MEMBER && it.senderMode == ActivityMode.LEADER)) &&
+            (state.mode == ActivityMode.LEADER || it.candidateId == currentCandidateId)
+    }
+    val pendingInvitations = state.invitations.count { it.candidateId == currentCandidateId && it.status == InviteStatus.PENDING }
+    val notificationCount = unreadMessages + pendingInvitations
     Surface(color = Color.White, shadowElevation = 2.dp) {
         Column(Modifier.fillMaxWidth().statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -244,7 +253,7 @@ private fun TeamFitTopBar(state: TeamFitUiState, showBack: Boolean, onBack: () -
                 Text(if (state.mode == ActivityMode.LEADER) "팀장 모드" else "팀원 모드", Modifier.background(IndigoSoft, RoundedCornerShape(999.dp)).padding(8.dp, 5.dp), color = Indigo, fontSize = 10.sp, fontWeight = FontWeight.Black)
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MiniAction("모드 전환", onSwitchMode); MiniAction("마이페이지", onMyPage); MiniAction("알림", onNotifications); if (state.account?.isAdmin == true) MiniAction("관리자", onAdmin); MiniAction("로그아웃", onLogout)
+                MiniAction("모드 전환", onSwitchMode); MiniAction("마이페이지", onMyPage); MiniAction(if (notificationCount > 0) "알림 · $notificationCount" else "알림", onNotifications); if (state.account?.isAdmin == true) MiniAction("관리자", onAdmin); MiniAction("로그아웃", onLogout)
             }
         }
     }
@@ -434,9 +443,29 @@ private fun ChatDialog(state: TeamFitUiState, viewModel: TeamFitViewModel, candi
 private fun NotificationsDialog(state: TeamFitUiState, viewModel: TeamFitViewModel, onDismiss: () -> Unit) {
     val candidate = state.candidates.find { it.email == state.account?.email }
     val invitations = if (candidate == null) emptyList() else state.invitations.filter { it.candidateId == candidate.id }
+    val incomingMessages = state.messages.filter {
+        !state.readMessageIds.contains(it.id) &&
+            ((state.mode == ActivityMode.LEADER && it.senderMode == ActivityMode.MEMBER) ||
+                (state.mode == ActivityMode.MEMBER && it.senderMode == ActivityMode.LEADER)) &&
+            (state.mode == ActivityMode.LEADER || it.candidateId == candidate?.id)
+    }.sortedByDescending { it.sentAt }
     AlertDialog(onDismissRequest = onDismiss, confirmButton = { TextButton(onClick = onDismiss) { Text("닫기") } }, title = { Text("알림", fontWeight = FontWeight.Black) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            if (invitations.isEmpty()) EmptyCard("새로운 알림이 없습니다.", "메시지나 최종 합류 요청이 도착하면 표시됩니다.")
+            if (incomingMessages.isEmpty() && invitations.isEmpty()) EmptyCard("새로운 알림이 없습니다.", "메시지나 최종 합류 요청이 도착하면 표시됩니다.")
+            incomingMessages.forEach { incoming ->
+                val team = state.teams.find { it.id == incoming.teamId }
+                val chatCandidate = state.candidates.find { it.id == incoming.candidateId }
+                Card(colors = CardDefaults.cardColors(containerColor = IndigoSoft)) {
+                    Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        Text("${incoming.senderName}님이 메시지를 보냈습니다.", color = Ink, fontWeight = FontWeight.Black)
+                        team?.let { Text(it.title, color = Indigo, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        Text(incoming.text, color = Muted, fontSize = 11.sp, lineHeight = 16.sp)
+                        if (chatCandidate != null) {
+                            TextButton(onClick = { viewModel.openChat(incoming.teamId, chatCandidate); onDismiss() }) { Text("채팅 열기") }
+                        }
+                    }
+                }
+            }
             invitations.forEach { invite -> val team = state.teams.find { it.id == invite.teamId } ?: return@forEach; Card(colors = CardDefaults.cardColors(containerColor = IndigoSoft)) { Column(Modifier.padding(13.dp)) { Text(team.title, color = Ink, fontWeight = FontWeight.Black); Text(if (invite.status == InviteStatus.PENDING) "최종 합류 요청이 도착했습니다." else "응답: ${if (invite.status == InviteStatus.ACCEPTED) "수락" else "거절"}", color = Muted, fontSize = 11.sp); if (invite.status == InviteStatus.PENDING) Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) { OutlinedButton(onClick = { viewModel.respondInvitation(team.id, false) }) { Text("거절") }; Button(onClick = { viewModel.respondInvitation(team.id, true) }, colors = ButtonDefaults.buttonColors(containerColor = Indigo)) { Text("수락") } } } }
             }
         }

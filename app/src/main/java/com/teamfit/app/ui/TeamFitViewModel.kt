@@ -38,6 +38,7 @@ data class TeamFitUiState(
     val profileTarget: Candidate? = null,
     val chatTarget: Candidate? = null,
     val messages: List<ChatMessage> = emptyList(),
+    val readMessageIds: Set<String> = emptySet(),
     val invitations: List<TeamInvitation> = emptyList(),
     val showMyPage: Boolean = false,
     val showNotifications: Boolean = false,
@@ -252,14 +253,27 @@ class TeamFitViewModel(
     }
 
     fun openChat(candidate: Candidate) {
+        val team = _uiState.value.selectedTeam ?: return
+        openChat(team, candidate)
+    }
+
+    fun openChat(teamId: String, candidate: Candidate) {
+        val team = _uiState.value.teams.find { it.id == teamId } ?: return
+        openChat(team, candidate)
+    }
+
+    private fun openChat(team: Team, candidate: Candidate) {
         val state = _uiState.value
-        val team = state.selectedTeam ?: return
         var messages = state.messages
         if (state.mode == ActivityMode.LEADER && messages.none { it.teamId == team.id && it.candidateId == candidate.id }) {
             messages = messages + ChatMessage("m-${System.currentTimeMillis()}", team.id, candidate.id, ActivityMode.LEADER,
                 state.account?.name.orEmpty(), "안녕하세요 ${candidate.name}님, 지원해 주셔서 감사합니다. 몇 가지 추가로 확인하고 싶습니다.")
         }
-        _uiState.update { it.copy(chatTarget = candidate, messages = messages) }
+        val incomingIds = messages
+            .filter { it.teamId == team.id && it.candidateId == candidate.id && it.senderMode != state.mode }
+            .map { it.id }
+            .toSet()
+        _uiState.update { it.copy(selectedTeam = team, chatTarget = candidate, messages = messages, readMessageIds = it.readMessageIds + incomingIds) }
     }
 
     fun closeChat() = _uiState.update { it.copy(chatTarget = null) }
@@ -271,7 +285,12 @@ class TeamFitViewModel(
         val account = state.account ?: return
         val mode = state.mode ?: return
         if (text.isBlank()) return
-        _uiState.update { it.copy(messages = it.messages + ChatMessage("m-${System.currentTimeMillis()}", team.id, target.id, mode, account.name, text.trim())) }
+        _uiState.update {
+            it.copy(
+                messages = it.messages + ChatMessage("m-${System.currentTimeMillis()}", team.id, target.id, mode, account.name, text.trim()),
+                message = "메시지를 보냈습니다. 상대방 알림에 표시됩니다.",
+            )
+        }
     }
 
     fun inviteCandidate(candidate: Candidate) {
