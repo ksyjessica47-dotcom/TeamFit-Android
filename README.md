@@ -4,9 +4,9 @@
 
 ## 실행 방법
 
-1. Android Studio에서 **Open**을 누릅니다.
-2. 이 ZIP을 푼 폴더의 `android-app` 폴더를 선택합니다.
-3. Gradle JDK는 **JDK 17 또는 21**을 선택합니다.
+1. Android Studio에서 Open을 누릅니다.
+2. 이 ZIP을 푼 폴더의 `TeamFit-Android` 폴더를 선택합니다.
+3. Gradle JDK는 JDK 17 또는 21을 선택합니다.
 4. Android SDK Platform 36을 설치하고 Gradle Sync를 실행합니다.
 5. Android 8.0(API 26) 이상의 에뮬레이터나 기기를 선택한 뒤 Run을 누릅니다.
 
